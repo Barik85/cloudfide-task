@@ -86,6 +86,14 @@ it('toggles a task and announces completion', async () => {
   expect(notify).toHaveBeenCalledWith('Another task complete. Well done!')
 })
 
+it('shows the task summary for loaded tasks', () => {
+  setupToggle({ mutateAsync: vi.fn() })
+  render(<TodosPage />)
+  expect(
+    screen.getByRole('region', { name: 'Task summary' }),
+  ).toHaveTextContent('1 active')
+})
+
 it('announces when a task is marked active again', async () => {
   const user = userEvent.setup()
   const mutateAsync = vi.fn().mockResolvedValue(todoFixture)
