@@ -213,6 +213,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      actions: write # dispatch CI for the agent's commit
       contents: write
       pull-requests: write
     steps:
@@ -258,6 +259,13 @@ jobs:
                         -m "Unit-Test-Agent: true"
           git push -q origin "HEAD:${GITHUB_HEAD_REF}"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      # A push made with GITHUB_TOKEN does not trigger ci.yml; a workflow_dispatch does, so the
+      # commit gets regular CI checks on the PR instead of keeping the previous head's status.
+      - name: Run CI on the agent commit
+        if: steps.commit.outputs.sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_HEAD_REF"
       - name: Post or update the PR comment
         env:
           GH_TOKEN: ${{ github.token }}

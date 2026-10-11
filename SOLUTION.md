@@ -27,7 +27,9 @@ pull_request ──► analyze ─────────► generate ───
                  plan.json          agent.patch             policy check         commit tests to the
                  pr.diff            agent-report.json       git apply            PR branch + sticky
                                     transcript.jsonl        tsc + vitest         PR comment + job
-                                                            + coverage           summary
+                                                            + coverage           summary +
+                                                                                 dispatch CI for
+                                                                                 the new commit
 ```
 
 | Piece | Where | Role |
@@ -97,7 +99,7 @@ in a local Claude Code session) and by any other agent.
 | Agent claims results it didn't observe | Report is advisory; the comment's verification table comes from the independent run. In a dry run the agent correctly reported "tests never ran" when the wrapper was broken. |
 | Runaway cost / hangs | `--max-budget-usd`, job timeouts, per-command timeout, max 20 targets per run, 200 KB diff cap, `concurrency` cancels superseded runs. |
 | Race with new pushes | Concurrency group per PR + publish refuses to commit if the branch tip moved. |
-| Workflow loops | Commits made with `GITHUB_TOKEN` do not trigger new workflow runs. |
+| Workflow loops | Commits made with `GITHUB_TOKEN` do not trigger new workflow runs. Publish explicitly dispatches only `ci.yml` (no agent run) for the agent's commit, so the PR shows real CI checks for its new head. |
 | Supply chain | Actions pinned to commit SHAs; Claude Code version pinned; `npm ci` from lockfiles. |
 | Markdown/mention injection in the comment | All PR/LLM text passes through `sanitize()` (HTML escaped, `@` neutralised, length-capped). |
 | Least privilege | `permissions: {}` at workflow level; each job declares only what it needs. |
@@ -171,7 +173,42 @@ reported that several components were only partially covered and left them as fo
 
 ### 5.2 PR mode — demo pull request
 
-_See section 5.2 below — filled in from the real workflow run on the demo PR._
+**PR:** [#1 — feat: task statistics endpoint and task summary in the UI](https://github.com/Barik85/cloudfide-task/pull/1)
+· [workflow run](https://github.com/Barik85/cloudfide-task/actions/runs/38157013723)
+
+The feature branch adds `GET /api/todos/stats` (`TodoStore.stats()` via Prisma counts, OpenAPI
+schema) and a `summarizeTodos()` util with a `TodoStats` component on the page. It ships
+**without tests**, and on purpose it breaks the backend type check: the `TodoStore` fake in
+`router.test.ts` has no `stats` member.
+
+| Job | Result | Notes |
+|---|---|---|
+| Analyze changes | ✅ 7 s | 5 testable targets; types and `openapi.json` filtered out deterministically |
+| Generate tests | ✅ 1 m 29 s | 33 turns, $0.23 equivalent, ran on the subscription token (`CLAUDE_CODE_OAUTH_TOKEN`) |
+| Verify | ✅ 33 s | policy check passed; type check and full suites passed without the LLM |
+| Publish | ✅ 10 s | commit `e56f8ed` by `unit-test-agent[bot]`, sticky comment posted |
+
+Agent decisions, taken from the PR comment:
+
+| Changed file | Action | Test file |
+|---|---|---|
+| `backend/.../repository.ts` | updated | `tests/repository.test.ts`: counts, plus overdue measured from the start of the UTC day |
+| `backend/.../router.ts` | updated | `tests/router.test.ts`: `GET /stats` is not routed to `/:id`, and the fake gains `stats` (fixes the type check) |
+| `frontend/.../TodosPage.tsx` | updated | `TodosPage.test.tsx`: the summary region is rendered |
+| `frontend/.../TodoStats.tsx` | created | `TodoStats.test.tsx`: empty list, counts and rate, overdue badge |
+| `frontend/.../utils/stats.ts` | created | `stats.test.ts`: zeros, mixed list, rounding |
+
+Independent verification: **frontend 89/89** (lines 93.6%) and **backend 85/85** (lines 97.3%).
+All new and changed modules except `TodosPage.tsx` reach 100% line coverage. Skills used:
+`analyze-changes`, `backend-unit-tests`, `frontend-unit-tests`, `run-and-fix-tests`, `test-report`.
+
+The agent also wrote two notes for reviewers that show it reviews the code beyond the tests:
+- the backend counts overdue tasks by UTC date while the frontend uses the browser's local
+  date, so near midnight the two counts can differ;
+- the new `/stats` endpoint is not used by the UI yet.
+
+The generated tests pin the clock (`vi.setSystemTime`) and pass explicit dates, so they do not
+depend on the date or time zone they run in.
 
 ## 6. Assumptions
 
@@ -190,8 +227,9 @@ _See section 5.2 below — filled in from the real workflow run on the demo PR._
   and focused `--include` passes).
 - Tests written by the agent may assert current behaviour that is actually a bug; the rules tell it
   to report suspected bugs instead, but this relies on judgement.
-- A commit pushed with `GITHUB_TOKEN` does not re-trigger `ci.yml`; verification of that exact
-  state happens inside the agent workflow (a GitHub App token would re-trigger CI).
+- A commit pushed with `GITHUB_TOKEN` does not trigger `pull_request` workflows, so publish
+  starts `ci.yml` via `workflow_dispatch` (needs `actions: write`). That run checks the branch
+  head, not GitHub's PR merge commit.
 - If the PR itself breaks typecheck/tests in a way the agent cannot fix within test files, nothing
   is committed (by design) — the comment shows the failures instead.
 - Fork PRs are skipped. The repository's pre-existing `prettier --check` failures (`index.html`, …)
@@ -200,7 +238,7 @@ _See section 5.2 below — filled in from the real workflow run on the demo PR._
 
 ## 8. Production roadmap
 
-- **GitHub App** identity for commits (re-triggers CI, clearer audit trail) and a protected
+- **GitHub App** identity for commits (normal `pull_request` CI on the merge commit, clearer audit trail) and a protected
   **Environment** with required reviewers for the secret.
 - Support fork PRs safely via `workflow_run` / label-gated `pull_request_target` that treats PR
   code strictly as data, with the agent in an ephemeral sandbox (container/microVM) with an

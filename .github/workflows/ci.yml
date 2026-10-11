@@ -4,6 +4,9 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Dispatched by unit-test-agent after it commits tests: pushes made with GITHUB_TOKEN do not
+  # trigger workflows, but workflow_dispatch does, so the agent's commit gets its own CI run.
+  workflow_dispatch:
 
 permissions:
   contents: read
