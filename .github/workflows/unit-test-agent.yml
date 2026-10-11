@@ -1,0 +1,278 @@
+# Agentic PR workflow: analyse the change → let unit-test-agent create/update tests →
+# verify them independently → commit + report in the pull request.
+#
+# Privilege separation (each job gets only what it needs):
+#   analyze  contents:read                        deterministic, no secrets
+#   generate contents:read  + LLM credentials     agent sandboxed by permissions + guard hook; cannot push
+#   verify   contents:read                        no secrets, no LLM; policy check + full test run
+#   publish  contents:write, pull-requests:write  no LLM, never executes PR code; trusted scripts only
+name: Unit Test Agent
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: unit-test-agent-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  CLAUDE_CODE_VERSION: '2.1.296'
+
+jobs:
+  analyze:
+    name: Analyze changes
+    # Same-repository PRs only (forks never receive secrets), not drafts, opt-out via label,
+    # and `labeled` events only for the explicit re-run label.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !github.event.pull_request.draft &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-test-agent') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'run-test-agent')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      needs_agent: ${{ steps.plan.outputs.needs_agent }}
+      frontend: ${{ steps.plan.outputs.frontend }}
+      backend: ${{ steps.plan.outputs.backend }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Use trusted agent tooling from the base branch
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          rm -rf .github/test-agent
+          git checkout "$BASE_SHA" -- .github/test-agent
+      - name: Build the test plan
+        id: plan
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node .github/test-agent/scripts/analyze-changes.mjs --base "$BASE_SHA" --head "$HEAD_SHA"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-agent-plan
+          path: |
+            .test-agent/plan.json
+            .test-agent/pr.diff
+          include-hidden-files: true
+          retention-days: 14
+
+  generate:
+    name: Generate tests (unit-test-agent)
+    needs: analyze
+    if: needs.analyze.outputs.needs_agent == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      agent_outcome: ${{ steps.agent.outcome }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Use trusted agent configuration from the base branch
+        # The agent, its skills, settings, guard hook and scripts are taken from the reviewed base
+        # branch, so a PR cannot change the agent's instructions or permissions for its own run.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          rm -rf .claude .github/test-agent CLAUDE.md
+          git checkout "$BASE_SHA" -- .claude .github/test-agent
+          git checkout "$BASE_SHA" -- CLAUDE.md 2>/dev/null || true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
+      - name: Install backend dependencies
+        if: needs.analyze.outputs.backend == 'true'
+        working-directory: backend
+        run: npm ci --no-audit --no-fund
+      - name: Install frontend dependencies
+        if: needs.analyze.outputs.frontend == 'true'
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+      - name: Install Claude Code
+        run: npm install --global --no-audit --no-fund "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: test-agent-plan
+          path: .test-agent
+      - name: Run unit-test-agent
+        id: agent
+        continue-on-error: true
+        env:
+          # Credentials exist only in this step's environment; run-tests.sh scrubs them for test code.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          TEST_AGENT_MODEL: ${{ vars.TEST_AGENT_MODEL || 'claude-sonnet-5-5' }}
+          TEST_AGENT_BUDGET_USD: ${{ vars.TEST_AGENT_BUDGET_USD || '5' }}
+        run: bash .github/test-agent/scripts/run-agent.sh
+      - name: Export the agent's changes as a patch
+        if: always()
+        run: |
+          mkdir -p .test-agent
+          git add --all -- backend frontend
+          git diff --cached --binary HEAD -- backend frontend > .test-agent/agent.patch
+          echo "### unit-test-agent changes" >> "$GITHUB_STEP_SUMMARY"
+          git diff --cached --stat HEAD -- backend frontend >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: test-agent-output
+          path: |
+            .test-agent/agent.patch
+            .test-agent/agent-report.json
+            .test-agent/transcript.jsonl
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14
+
+  verify:
+    name: Verify generated tests
+    needs: [analyze, generate]
+    if: needs.analyze.outputs.needs_agent == 'true' && needs.generate.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      passed: ${{ steps.verify.outputs.passed }}
+      patch_ok: ${{ steps.verify.outputs.patch_ok }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Use trusted verification scripts from the base branch
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          rm -rf .github/test-agent
+          git checkout "$BASE_SHA" -- .github/test-agent
+          git reset -q -- .github/test-agent
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
+      - name: Install backend dependencies
+        if: needs.analyze.outputs.backend == 'true'
+        working-directory: backend
+        run: npm ci --no-audit --no-fund
+      - name: Install frontend dependencies
+        if: needs.analyze.outputs.frontend == 'true'
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: test-agent-plan
+          path: .test-agent
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: test-agent-output
+          path: .test-agent
+      - name: Policy check, apply patch, typecheck and run all tests
+        id: verify
+        run: node .github/test-agent/scripts/verify.mjs
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: test-agent-verify
+          path: .test-agent/verify.json
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14
+
+  publish:
+    name: Publish results to the PR
+    needs: [analyze, generate, verify]
+    if: always() && needs.analyze.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # Two checkouts: trusted scripts from the base commit, and the PR branch only as data to
+      # apply the already-verified patch to. Nothing from the PR is executed in this job.
+      - name: Checkout trusted scripts (base)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted
+          sparse-checkout: .github/test-agent
+          persist-credentials: false
+      - name: Checkout PR branch
+        if: needs.verify.outputs.patch_ok == 'true' && vars.TEST_AGENT_COMMIT != 'false'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.head_ref }}
+          path: pr
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: test-agent-*
+          merge-multiple: true
+          path: .test-agent
+      - name: Commit verified tests to the PR branch
+        id: commit
+        if: needs.verify.outputs.patch_ok == 'true' && vars.TEST_AGENT_COMMIT != 'false'
+        working-directory: pr
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$(git rev-parse HEAD)" != "$HEAD_SHA" ]; then
+            echo "::warning::PR branch moved since the agent ran; not committing."
+            exit 0
+          fi
+          git apply --index ../.test-agent/agent.patch
+          git -c user.name="unit-test-agent[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -q -m "test: add unit tests for PR changes" \
+                        -m "Generated by unit-test-agent and verified in run ${GITHUB_RUN_ID}." \
+                        -m "Unit-Test-Agent: true"
+          git push -q origin "HEAD:${GITHUB_HEAD_REF}"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Post or update the PR comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          COMMIT_SHA: ${{ steps.commit.outputs.sha }}
+          GENERATE_RESULT: ${{ needs.generate.result == 'success' && needs.generate.outputs.agent_outcome || needs.generate.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          node trusted/.github/test-agent/scripts/render-comment.mjs \
+            --commit "$COMMIT_SHA" --run-url "$RUN_URL" --generate "$GENERATE_RESULT" > comment.md
+          cat comment.md >> "$GITHUB_STEP_SUMMARY"
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- unit-test-agent -->"))) | .id' | head -n 1)
+          if [ -n "$existing" ]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" -F body=@comment.md > /dev/null
+          else
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" -F body=@comment.md > /dev/null
+          fi

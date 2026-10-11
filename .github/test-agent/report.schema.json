@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "skillsUsed", "decisions", "testRuns", "notes"],
+  "properties": {
+    "summary": { "type": "string", "description": "2-4 sentences: what changed and what the agent did about tests." },
+    "skillsUsed": { "type": "array", "items": { "type": "string" } },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "action", "testFile", "reason", "scenarios"],
+        "properties": {
+          "file": { "type": "string", "description": "Changed source file (repo-relative)." },
+          "action": { "type": "string", "enum": ["created", "updated", "skipped"] },
+          "testFile": { "type": ["string", "null"] },
+          "reason": { "type": "string" },
+          "scenarios": { "type": "array", "items": { "type": "string" }, "description": "Behaviours covered by new/changed tests." }
+        }
+      }
+    },
+    "testRuns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["project", "command", "passed", "failed"],
+        "properties": {
+          "project": { "type": "string", "enum": ["frontend", "backend"] },
+          "command": { "type": "string" },
+          "passed": { "type": "integer" },
+          "failed": { "type": "integer" }
+        }
+      }
+    },
+    "notes": { "type": "array", "items": { "type": "string" }, "description": "Suspected bugs in source code, untestable code, follow-ups." }
+  }
+}
