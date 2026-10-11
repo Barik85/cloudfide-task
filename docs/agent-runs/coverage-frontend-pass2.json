@@ -1,0 +1,78 @@
+{
+  "mode": "coverage",
+  "decisions": [
+    {
+      "path": "frontend/src/app/AppProviders.tsx",
+      "action": "create",
+      "testFile": "frontend/src/app/AppProviders.test.tsx",
+      "reason": "No test existed. Added tests for rendering children, using the supplied QueryClient, and falling back to the default client."
+    },
+    {
+      "path": "frontend/src/features/todos/TodosPage.tsx",
+      "action": "update",
+      "testFile": "frontend/src/features/todos/TodosPage.test.tsx",
+      "reason": "Added tests for toggle completion, toggle back to active, a failed toggle, and the busy guard. The TodoList mock now renders a toggle button."
+    },
+    {
+      "path": "frontend/src/features/todos/components/DeleteTodoDialog.tsx",
+      "action": "update",
+      "testFile": "frontend/src/features/todos/components/DeleteTodoDialog.test.tsx",
+      "reason": "Added tests for delete success, delete failure, and the busy state."
+    },
+    {
+      "path": "frontend/src/features/todos/components/TodoEditor.tsx",
+      "action": "update",
+      "testFile": "frontend/src/features/todos/components/TodoEditor.test.tsx",
+      "reason": "Added tests for the edit path, a failed save, and the busy guard."
+    },
+    {
+      "path": "frontend/src/features/todos/components/TodoForm.tsx",
+      "action": "update",
+      "testFile": "frontend/src/features/todos/components/TodoForm.test.tsx",
+      "reason": "Added tests for initial values with a due date, the server error with Cancel, and the busy state."
+    },
+    {
+      "path": "frontend/src/features/todos/components/TodoItem.tsx",
+      "action": "update",
+      "testFile": "frontend/src/features/todos/components/TodoItem.test.tsx",
+      "reason": "Added tests for a completed task with a description, toggle and delete callbacks, overdue and non-overdue due dates (fake timers), and the busy state."
+    },
+    {
+      "path": "frontend/src/features/todos/components/TodoList.tsx",
+      "action": "update",
+      "testFile": "frontend/src/features/todos/components/TodoList.test.tsx",
+      "reason": "Added tests for the failed state with no tasks, the failed state with cached tasks, and forwarding of toggle, edit and delete. The TodoItem mock now renders buttons for those callbacks."
+    }
+  ],
+  "skillsUsed": [
+    "analyze-changes",
+    "frontend-unit-tests"
+  ],
+  "testRuns": [
+    {
+      "project": "frontend",
+      "command": "test (7 changed files)",
+      "result": "pass",
+      "summary": "7 files, 29 tests passed"
+    },
+    {
+      "project": "frontend",
+      "command": "typecheck",
+      "result": "pass",
+      "summary": "no errors"
+    },
+    {
+      "project": "frontend",
+      "command": "test (full suite)",
+      "result": "pass",
+      "summary": "19 files, 82 tests passed"
+    },
+    {
+      "project": "frontend",
+      "command": "format (changed test files)",
+      "result": "pass",
+      "summary": "Prettier reformatted 4 test files. I did not re-run the tests after that; it only changed layout."
+    }
+  ],
+  "notes": "No source bugs found. I did not invoke the run-and-fix-tests or test-report skills, so the report follows the format from the task instructions."
+}

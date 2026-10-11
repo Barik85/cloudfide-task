@@ -1,0 +1,242 @@
+{
+  "summary": "Coverage mode: added tests for the untested http client, the todo hooks, TodoEmptyState and AppProviders-adjacent logic, and extended the util, API and notice tests. The frontend typecheck is clean and the full suite passes with 60 tests.",
+  "skillsUsed": [
+    "analyze-changes",
+    "frontend-unit-tests",
+    "run-and-fix-tests",
+    "test-report"
+  ],
+  "decisions": [
+    {
+      "file": "frontend/src/App.tsx",
+      "action": "skipped",
+      "testFile": null,
+      "reason": "Composition only; covered by the existing App.test.tsx test 'composes the application header and tasks page'. I did not read App.tsx itself, only that test's name.",
+      "scenarios": []
+    },
+    {
+      "file": "frontend/src/app/AppProviders.tsx",
+      "action": "skipped",
+      "testFile": null,
+      "reason": "Provider wiring with no logic; the default client prop is exercised by App.test.tsx.",
+      "scenarios": []
+    },
+    {
+      "file": "frontend/src/components/ApplicationHeader.tsx",
+      "action": "skipped",
+      "testFile": null,
+      "reason": "Static markup; the existing ApplicationHeader.test.tsx covers the home link, title and description. I did not read the source file.",
+      "scenarios": []
+    },
+    {
+      "file": "frontend/src/components/SuccessNotice.tsx",
+      "action": "skipped",
+      "testFile": null,
+      "reason": "Presentational component already covered by the 2 tests in SuccessNotice.test.tsx. I did not read the source file.",
+      "scenarios": []
+    },
+    {
+      "file": "frontend/src/features/todos/TodosPage.tsx",
+      "action": "skipped",
+      "testFile": null,
+      "reason": "The existing test covers the query-error and retry path. The toggle success and failure notices, the editor and delete dialog wiring, and the busy-disabled state have no test (follow-up).",
+      "scenarios": []
+    },
+    {
+      "file": "frontend/src/features/todos/api/todos.ts",
+      "action": "updated",
+      "testFile": "frontend/src/features/todos/api/todos.test.ts",
+      "reason": "update and remove had no tests.",
+      "scenarios": [
+        "patches only the provided fields on update",
+        "sends a DELETE request when removing a task"
+      ]
+    },
+    {
+      "file": "frontend/src/features/todos/components/DeleteTodoDialog.tsx",
+      "action": "skipped",
+      "testFile": null,
+      "reason": "The existing test covers the error display and cancelling. The successful delete path is not tested (follow-up). I did not read the source file.",
+      "scenarios": []
+    },
+    {
+      "file": "frontend/src/features/todos/components/TodoEditor.tsx",
+      "action": "skipped",
+      "testFile": null,
+      "reason": "The existing test covers creating a task and the save notice. Edit mode, a failed save and the busy guard are not tested (follow-up).",
+      "scenarios": []
+    },
+    {
+      "file": "frontend/src/features/todos/components/TodoEmptyState.tsx",
+      "action": "created",
+      "testFile": "frontend/src/features/todos/components/TodoEmptyState.test.tsx",
+      "reason": "The component branches on hasTodos and disabled and had no test.",
+      "scenarios": [
+        "invites creating the first task and calls onCreate",
+        "disables the create button when disabled",
+        "shows a no-match message without a create button when todos exist"
+      ]
+    },
+    {
+      "file": "frontend/src/features/todos/components/TodoFilters.tsx",
+      "action": "skipped",
+      "testFile": null,
+      "reason": "The existing test covers the controlled values and every change handler. I did not read the source file.",
+      "scenarios": []
+    },
+    {
+      "file": "frontend/src/features/todos/components/TodoForm.tsx",
+      "action": "skipped",
+      "testFile": null,
+      "reason": "The existing tests cover validation and trimmed submit. I did not read the source file, so other branches may remain untested.",
+      "scenarios": []
+    },
+    {
+      "file": "frontend/src/features/todos/components/TodoItem.tsx",
+      "action": "skipped",
+      "testFile": null,
+      "reason": "The existing test covers an active task and the edit callback. The completed, overdue, description, toggle and delete branches are not tested (follow-up).",
+      "scenarios": []
+    },
+    {
+      "file": "frontend/src/features/todos/components/TodoList.tsx",
+      "action": "skipped",
+      "testFile": null,
+      "reason": "The existing test covers loading to empty. The failed, populated and no-match branches are not tested (follow-up).",
+      "scenarios": []
+    },
+    {
+      "file": "frontend/src/features/todos/components/TodosHeader.tsx",
+      "action": "skipped",
+      "testFile": null,
+      "reason": "The existing test covers the enabled and disabled create button. I did not read the source file.",
+      "scenarios": []
+    },
+    {
+      "file": "frontend/src/features/todos/hooks/useCreateTodoMutation.ts",
+      "action": "created",
+      "testFile": "frontend/src/features/todos/hooks/todoHooks.test.tsx",
+      "reason": "No test existed; one file now covers all the todo hooks.",
+      "scenarios": [
+        "prepends the saved todo to the cached list",
+        "creates the list when nothing is cached and avoids duplicates",
+        "keeps the cache unchanged when creation fails"
+      ]
+    },
+    {
+      "file": "frontend/src/features/todos/hooks/useDeleteTodoMutation.ts",
+      "action": "created",
+      "testFile": "frontend/src/features/todos/hooks/todoHooks.test.tsx",
+      "reason": "No test existed for the cache removal and failure paths.",
+      "scenarios": [
+        "removes the deleted todo from the cached list",
+        "keeps the cache unchanged when deletion fails"
+      ]
+    },
+    {
+      "file": "frontend/src/features/todos/hooks/useTodoFilters.ts",
+      "action": "created",
+      "testFile": "frontend/src/features/todos/hooks/useTodoFilters.test.ts",
+      "reason": "No test existed for the state defaults and derived visible list.",
+      "scenarios": [
+        "starts with all todos, empty search and newest sort",
+        "narrows visible todos by status",
+        "narrows visible todos by search text",
+        "updates the sort selection"
+      ]
+    },
+    {
+      "file": "frontend/src/features/todos/hooks/useTodosBusy.ts",
+      "action": "created",
+      "testFile": "frontend/src/features/todos/hooks/todoHooks.test.tsx",
+      "reason": "No test existed for the in-flight mutation flag.",
+      "scenarios": [
+        "is true only while a todo mutation is in flight"
+      ]
+    },
+    {
+      "file": "frontend/src/features/todos/hooks/useTodosQuery.ts",
+      "action": "created",
+      "testFile": "frontend/src/features/todos/hooks/todoHooks.test.tsx",
+      "reason": "No test existed for loading, the abort signal and errors.",
+      "scenarios": [
+        "loads todos and passes the abort signal to the API",
+        "exposes the error when loading fails"
+      ]
+    },
+    {
+      "file": "frontend/src/features/todos/hooks/useUpdateTodoMutation.ts",
+      "action": "created",
+      "testFile": "frontend/src/features/todos/hooks/todoHooks.test.tsx",
+      "reason": "No test existed for the cache replacement.",
+      "scenarios": [
+        "replaces the updated todo in the cached list",
+        "does not create a list when none is cached"
+      ]
+    },
+    {
+      "file": "frontend/src/features/todos/utils/todos.ts",
+      "action": "updated",
+      "testFile": "frontend/src/features/todos/utils/todos.test.ts",
+      "reason": "validateTodo, isOverdue, formatDate and the due and newest sorts were untested.",
+      "scenarios": [
+        "sorts by due date with undated tasks last",
+        "sorts newest first and filters completed tasks",
+        "requires a non-blank title",
+        "limits the title to 120 characters",
+        "limits the description to 2000 characters",
+        "rejects the invalid due date",
+        "accepts a real calendar date",
+        "is true only for active tasks due before today",
+        "formats an ISO date in en-GB style"
+      ]
+    },
+    {
+      "file": "frontend/src/hooks/useNotice.ts",
+      "action": "updated",
+      "testFile": "frontend/src/hooks/useNotice.test.ts",
+      "reason": "The 4-second auto-clear and the timer restart were untested.",
+      "scenarios": [
+        "shows a notice and clears it after four seconds",
+        "restarts the timer when a new notice replaces the old one"
+      ]
+    },
+    {
+      "file": "frontend/src/lib/http.ts",
+      "action": "created",
+      "testFile": "frontend/src/lib/http.test.ts",
+      "reason": "The HTTP client had no tests for its success, error and abort branches.",
+      "scenarios": [
+        "returns parsed JSON and prefixes the path with /api",
+        "merges custom headers over the defaults",
+        "returns undefined for a 204 response",
+        "shows a validation message for a 422 response",
+        "uses a string detail from the error body",
+        "falls back to a generic message for a non-string detail",
+        "falls back to a generic message for a non-JSON error body",
+        "reports a connection problem when fetch fails",
+        "rethrows the original error when the request was aborted"
+      ]
+    }
+  ],
+  "testRuns": [
+    {
+      "project": "frontend",
+      "command": "run-tests.sh typecheck frontend",
+      "passed": 0,
+      "failed": 0
+    },
+    {
+      "project": "frontend",
+      "command": "run-tests.sh test frontend",
+      "passed": 60,
+      "failed": 0
+    }
+  ],
+  "notes": [
+    "I did not read every target before deciding. App.tsx, ApplicationHeader.tsx, SuccessNotice.tsx, DeleteTodoDialog.tsx, TodoFilters.tsx, TodoForm.tsx and TodosHeader.tsx were skipped based only on their existing test names, so those skips are unverified.",
+    "Component tests for TodosPage, TodoEditor, TodoItem, TodoList and DeleteTodoDialog each have a single test, and several branches remain uncovered. I did not extend them.",
+    "The typecheck produced no output, so I treated it as clean. It reports 0 passed and 0 failed because there are no test counts to give.",
+    "src/lib/http.ts: a 422 response always returns the fixed validation message and ignores the server's detail text, which may be intentional."
+  ]
+}

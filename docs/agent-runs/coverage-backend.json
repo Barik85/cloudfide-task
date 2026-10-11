@@ -1,0 +1,134 @@
+{
+  "summary": "Coverage mode on 10 backend targets. Created 5 test files (health, config, database, factory, lifespan) and extended router.test.ts. Mappers, repository and validators were already fully covered, so I skipped them, and I skipped main.ts as a bootstrap file. The new and changed tests pass, typecheck is clean, and the full backend suite passes.",
+  "skillsUsed": [
+    "analyze-changes",
+    "backend-unit-tests",
+    "run-and-fix-tests",
+    "test-report"
+  ],
+  "decisions": [
+    {
+      "file": "backend/src/api/health.ts",
+      "action": "created",
+      "testFile": "backend/tests/health.test.ts",
+      "reason": "The health endpoint had no test.",
+      "scenarios": [
+        "reports ok after querying the database"
+      ]
+    },
+    {
+      "file": "backend/src/core/config.ts",
+      "action": "created",
+      "testFile": "backend/tests/config.test.ts",
+      "reason": "None of the branches in resolveDatabaseUrl were tested.",
+      "scenarios": [
+        "prefers the override and normalises the SQLAlchemy driver prefix",
+        "uses DATABASE_URL when no override is given",
+        "builds the URL from individual variables and encodes the database name",
+        "throws when each required variable is missing"
+      ]
+    },
+    {
+      "file": "backend/src/core/database.ts",
+      "action": "created",
+      "testFile": "backend/tests/database.test.ts",
+      "reason": "initialize had no direct test. createDatabase was only used as a helper in repository.test.ts.",
+      "scenarios": [
+        "creates a Prisma client exposing the todo delegate without connecting",
+        "initializes the todos table idempotently"
+      ]
+    },
+    {
+      "file": "backend/src/core/lifespan.ts",
+      "action": "created",
+      "testFile": "backend/tests/lifespan.test.ts",
+      "reason": "Startup, shutdown and the startup-failure cleanup path had no tests.",
+      "scenarios": [
+        "connects, initializes and listens on API_PORT",
+        "defaults to port 8000 when API_PORT is unset",
+        "closes the server and disconnects the database on shutdown",
+        "sets a failing exit code when disconnecting during shutdown fails",
+        "disconnects and rethrows when startup fails",
+        "disconnects and rethrows when listening fails"
+      ]
+    },
+    {
+      "file": "backend/src/factory.ts",
+      "action": "created",
+      "testFile": "backend/tests/factory.test.ts",
+      "reason": "App wiring and the error and 404 handlers had no tests.",
+      "scenarios": [
+        "serves the todos router backed by the repository",
+        "serves the health endpoint",
+        "does not expose x-powered-by",
+        "serves the OpenAPI specification",
+        "returns a JSON 404 for unknown routes",
+        "returns 422 for malformed JSON bodies",
+        "returns 413 for oversized bodies",
+        "returns 500 and logs unexpected errors"
+      ]
+    },
+    {
+      "file": "backend/src/features/todos/mappers.ts",
+      "action": "skipped",
+      "testFile": null,
+      "reason": "Already covered by tests/mappers.test.ts: mapping, an absent due date and invalid stored data are all exercised.",
+      "scenarios": []
+    },
+    {
+      "file": "backend/src/features/todos/repository.ts",
+      "action": "skipped",
+      "testFile": null,
+      "reason": "Already covered by tests/repository.test.ts: every method and branch is exercised, including empty and unknown update fields and missing rows.",
+      "scenarios": []
+    },
+    {
+      "file": "backend/src/features/todos/router.ts",
+      "action": "updated",
+      "testFile": "backend/tests/router.test.ts",
+      "reason": "The existing tests only covered list and create. GET, PATCH and DELETE by id, the id validation and the 404 paths were untested.",
+      "scenarios": [
+        "gets a task by ID",
+        "returns 404 when getting a missing task",
+        "rejects invalid ID with 422",
+        "updates a task with a validated patch",
+        "rejects empty patches without calling the repository",
+        "returns 404 when updating a missing task",
+        "deletes a task and responds 204",
+        "returns 404 when deleting a missing task"
+      ]
+    },
+    {
+      "file": "backend/src/features/todos/validators.ts",
+      "action": "skipped",
+      "testFile": null,
+      "reason": "Already covered by tests/validators.test.ts: defaults, trimming, boundaries, rejections, id parsing and the response schema.",
+      "scenarios": []
+    },
+    {
+      "file": "backend/src/main.ts",
+      "action": "skipped",
+      "testFile": null,
+      "reason": "Process bootstrap with no extractable logic. It only calls start() and sets the exit code on failure, and start() is covered by lifespan.test.ts.",
+      "scenarios": []
+    }
+  ],
+  "testRuns": [
+    {
+      "project": "backend",
+      "command": "run-tests.sh test backend",
+      "passed": 83,
+      "failed": 0
+    },
+    {
+      "project": "backend",
+      "command": "run-tests.sh typecheck backend",
+      "passed": 0,
+      "failed": 0
+    }
+  ],
+  "notes": [
+    "The first lifespan.test.ts run had 4 failures, caused by my fake app.listen calling its callback synchronously. I fixed the test and it now passes.",
+    "The typecheck command finished with no errors, so I recorded it with 0 passed and 0 failed, since it reports no test counts."
+  ]
+}
