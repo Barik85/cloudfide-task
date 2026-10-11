@@ -99,7 +99,7 @@ in a local Claude Code session) and by any other agent.
 | Agent claims results it didn't observe | Report is advisory; the comment's verification table comes from the independent run. In a dry run the agent correctly reported "tests never ran" when the wrapper was broken. |
 | Runaway cost / hangs | `--max-budget-usd`, job timeouts, per-command timeout, max 20 targets per run, 200 KB diff cap, `concurrency` cancels superseded runs. |
 | Race with new pushes | Concurrency group per PR + publish refuses to commit if the branch tip moved. |
-| Workflow loops | Commits made with `GITHUB_TOKEN` do not trigger new workflow runs. Publish explicitly dispatches only `ci.yml` (no agent run) for the agent's commit, so the PR shows real CI checks for its new head. |
+| Workflow loops | Pushes made with `GITHUB_TOKEN` do not start `pull_request` workflows: GitHub holds those runs as `action_required` until a maintainer approves them. Publish explicitly dispatches only `ci.yml` (no agent run) for the agent's commit, so the PR shows real CI checks for its new head. |
 | Supply chain | Actions pinned to commit SHAs; Claude Code version pinned; `npm ci` from lockfiles. |
 | Markdown/mention injection in the comment | All PR/LLM text passes through `sanitize()` (HTML escaped, `@` neutralised, length-capped). |
 | Least privilege | `permissions: {}` at workflow level; each job declares only what it needs. |
@@ -210,6 +210,12 @@ The agent also wrote two notes for reviewers that show it reviews the code beyon
 The generated tests pin the clock (`vi.setSystemTime`) and pass explicit dates, so they do not
 depend on the date or time zone they run in.
 
+**Second run (idempotency).** After `main` was merged into the branch, the workflow ran again
+([run](https://github.com/Barik85/cloudfide-task/actions/runs/38158693562)). The agent found
+every target already covered by the committed tests, named the covering test for each one,
+and made no changes; verification passed. The PR comment is sticky, so it now shows this
+second run, while the first run's output is in its workflow summary.
+
 ## 6. Assumptions
 
 - Contributors who can push branches to this repository are trusted with repository secrets
@@ -227,7 +233,8 @@ depend on the date or time zone they run in.
   and focused `--include` passes).
 - Tests written by the agent may assert current behaviour that is actually a bug; the rules tell it
   to report suspected bugs instead, but this relies on judgement.
-- A commit pushed with `GITHUB_TOKEN` does not trigger `pull_request` workflows, so publish
+- A commit pushed with `GITHUB_TOKEN` does not start `pull_request` workflows: GitHub holds
+  them as `action_required`, and the agent run there needs no approval. Publish therefore
   starts `ci.yml` via `workflow_dispatch` (needs `actions: write`). That run checks the branch
   head, not GitHub's PR merge commit.
 - If the PR itself breaks typecheck/tests in a way the agent cannot fix within test files, nothing
