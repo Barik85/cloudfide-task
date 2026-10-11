@@ -50,11 +50,15 @@ for (const project of plan.projects) {
   const typecheck = step('typecheck')
   const tests = step('coverage')
   const vitest = readJson(path.join(dir, `${project}-results.json`), {})
-  const failures = (vitest.testResults ?? []).flatMap((file) =>
-    (file.assertionResults ?? [])
-      .filter((a) => a.status === 'failed')
-      .map((a) => ({ file: path.relative(process.cwd(), file.name), test: a.fullName, message: (a.failureMessages ?? []).join('\n').slice(0, 600) })),
-  )
+  const failures = (vitest.testResults ?? []).flatMap((file) => {
+    const relative = path.relative(process.cwd(), file.name)
+    const assertions = (file.assertionResults ?? []).filter((a) => a.status === 'failed')
+    // A suite that fails to load (import/syntax error) has no assertion results, only a message.
+    if (file.status === 'failed' && !assertions.length) {
+      return [{ file: relative, test: '(test file failed to load)', message: String(file.message ?? '').slice(0, 600) }]
+    }
+    return assertions.map((a) => ({ file: relative, test: a.fullName, message: (a.failureMessages ?? []).join('\n').slice(0, 600) }))
+  })
   const summary = readJson(path.join(project, 'coverage', 'coverage-summary.json'), {})
   result.projects[project] = {
     typecheck: typecheck.ok,
@@ -64,6 +68,7 @@ for (const project of plan.projects) {
     total: vitest.numTotalTests ?? 0,
     passedCount: vitest.numPassedTests ?? 0,
     failedCount: vitest.numFailedTests ?? 0,
+    failedSuites: vitest.numFailedTestSuites ?? 0,
     failures: failures.slice(0, 10),
     coverageTotal: summary.total ? { lines: summary.total.lines.pct, branches: summary.total.branches.pct } : null,
     coverage: coverageFor(summary, plan.targets.filter((t) => t.project === project).map((t) => t.path), project),

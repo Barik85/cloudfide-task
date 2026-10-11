@@ -41,7 +41,7 @@ if (!plan) {
   if (committed) status = `✅ Generated tests passed verification and were committed in ${values.commit.slice(0, 7)}.`
   else if (values.generate && values.generate !== 'success') status = `⚠️ The agent did not finish (job result: ${sanitize(values.generate, 40)}). Nothing was committed.`
   else if (!verify) status = '⚠️ Verification did not run. Nothing was committed.'
-  else if (!verify.patch.present) status = `${verify.passed ? 'ℹ️' : '❌'} The agent decided no test changes were needed.`
+  else if (!verify.patch.present) status = verify.passed ? 'ℹ️ The agent decided no test changes were needed.' : '❌ The agent made no test changes, and the PR does not pass its checks (see below).'
   else if (verify.patch.violations.length) status = '⛔ The agent patch was rejected by the safety policy. Nothing was committed.'
   else if (!verify.passed) status = '❌ Tests or type checking failed after applying the agent patch. Nothing was committed.'
   else status = 'ℹ️ Generated tests passed verification but were not committed (the PR branch moved or committing is disabled).'
@@ -71,9 +71,16 @@ if (!plan) {
     lines.push('### Verification (independent run, no LLM)', '', '| Project | Type check | Tests | Coverage (lines / branches) |', '|---|---|---|---|')
     for (const [project, p] of Object.entries(verify.projects)) {
       const total = p.coverageTotal ? `${pct(p.coverageTotal.lines)} / ${pct(p.coverageTotal.branches)}` : '–'
-      lines.push(`| ${project} | ${icon(p.typecheck)} | ${icon(p.tests)} ${p.passedCount}/${p.total} passed | ${total} |`)
+      const suites = p.failedSuites ? `, ${p.failedSuites} file(s) failed` : ''
+      lines.push(`| ${project} | ${icon(p.typecheck)} | ${icon(p.tests)} ${p.passedCount}/${p.total} passed${suites} | ${total} |`)
     }
     lines.push('')
+    const typeErrors = Object.entries(verify.projects).filter(([, p]) => !p.typecheck)
+    if (typeErrors.length) {
+      lines.push('<details open><summary>Type check errors</summary>', '')
+      typeErrors.forEach(([project, p]) => lines.push(`**${project}**`, '', '```', p.typecheckOutput.replace(/```/g, "'''").slice(-2000), '```', ''))
+      lines.push('</details>', '')
+    }
     const coverage = Object.values(verify.projects).flatMap((p) => p.coverage)
     if (coverage.length) {
       lines.push('<details><summary>Coverage of changed files</summary>', '', '| File | Lines | Branches | Functions |', '|---|---|---|---|')
