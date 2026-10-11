@@ -123,6 +123,7 @@ Open a non-draft PR against `main` from a branch of this repository. The workflo
 (and `labeled` with `run-test-agent`). Results:
 
 - a commit `test: add unit tests for PR changes` on the PR branch (if verification passed),
+  followed by a CI run for that commit,
 - a sticky PR comment: decisions per changed file, covered scenarios, verification table,
   coverage of the changed files, failing tests / type errors / policy violations, reviewer notes,
 - the same report in the job summary, and artifacts (`plan.json`, `pr.diff`, `agent.patch`,
@@ -132,7 +133,8 @@ Open a non-draft PR against `main` from a branch of this repository. The workflo
 
 ```bash
 # Node.js >= 22, `npm ci` in backend/ and frontend/, Claude Code logged in
-node .github/test-agent/scripts/analyze-changes.mjs --base origin/main --head HEAD   # PR mode
+node .github/test-agent/scripts/analyze-changes.mjs \
+  --base "$(git rev-parse origin/main)" --head "$(git rev-parse HEAD)"                # PR mode (SHAs)
 node .github/test-agent/scripts/analyze-changes.mjs --all backend                    # coverage mode
 node .github/test-agent/scripts/analyze-changes.mjs --all frontend --include 'components/'
 bash .github/test-agent/scripts/run-agent.sh
@@ -169,7 +171,8 @@ synchronously), fixed the test, then ran `typecheck` and the full suite: **83 pa
 reported that several components were only partially covered and left them as follow-ups. Pass 2
 (`--include` the 7 weakest components, $0.29) extended `TodosPage`, `TodoItem`, `TodoList`,
 `TodoEditor`, `TodoForm`, `DeleteTodoDialog`, and created `AppProviders.test.tsx`:
-**82 passed, 0 failed**, lines 93.4%.
+**82 passed, 0 failed**, lines 93.4%. (The pass 2 report predates schema enforcement, so its
+JSON shape differs slightly from the other two.)
 
 ### 5.2 PR mode — demo pull request
 
@@ -234,9 +237,10 @@ second run, while the first run's output is in its workflow summary.
 - Tests written by the agent may assert current behaviour that is actually a bug; the rules tell it
   to report suspected bugs instead, but this relies on judgement.
 - A commit pushed with `GITHUB_TOKEN` does not start `pull_request` workflows: GitHub holds
-  them as `action_required`, and the agent run there needs no approval. Publish therefore
-  starts `ci.yml` via `workflow_dispatch` (needs `actions: write`). That run checks the branch
-  head, not GitHub's PR merge commit.
+  those runs as `action_required` until someone approves them. Publish therefore starts only
+  `ci.yml` via `workflow_dispatch` (needs `actions: write`). That run checks the branch head,
+  not GitHub's PR merge commit, and the dispatch step has so far been exercised manually, not
+  from a run where the agent committed.
 - If the PR itself breaks typecheck/tests in a way the agent cannot fix within test files, nothing
   is committed (by design) — the comment shows the failures instead.
 - Fork PRs are skipped. The repository's pre-existing `prettier --check` failures (`index.html`, …)
@@ -245,8 +249,8 @@ second run, while the first run's output is in its workflow summary.
 
 ## 8. Production roadmap
 
-- **GitHub App** identity for commits (normal `pull_request` CI on the merge commit, clearer audit trail) and a protected
-  **Environment** with required reviewers for the secret.
+- **GitHub App** identity for commits (normal `pull_request` CI on the merge commit, clearer
+  audit trail) and a protected **Environment** with required reviewers for the secret.
 - Support fork PRs safely via `workflow_run` / label-gated `pull_request_target` that treats PR
   code strictly as data, with the agent in an ephemeral sandbox (container/microVM) with an
   egress allowlist (`api.anthropic.com` only) — e.g. Claude Code's sandbox mode or step-security
