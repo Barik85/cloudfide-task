@@ -6,10 +6,10 @@
 //
 // Writes <out>/plan.json (+ <out>/pr.diff in PR mode) and prints GitHub step outputs.
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
-import { PROJECTS, buildPlan, classify, parseNameStatus } from './lib.mjs'
+import { PROJECTS, buildPlan, classify, findRelatedTests, parseNameStatus } from './lib.mjs'
 
 const MAX_DIFF_BYTES = 200_000
 const SHA = /^[0-9a-f]{7,40}$/
@@ -29,22 +29,31 @@ const git = (...args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer
 const maxTargets = Number(values['max-targets'])
 mkdirSync(values.out, { recursive: true })
 
+// Existing tests (at the PR head) that import each target, so the agent extends them
+// instead of creating duplicates.
+const testSources = Object.fromEntries(
+  git('ls-files', 'frontend/src', 'backend/tests').split('\n')
+    .filter((file) => file && classify(file).kind === 'test' && existsSync(file))
+    .map((file) => [file, readFileSync(file, 'utf8')]),
+)
+const relatedTests = (file) => findRelatedTests(file, testSources)
+
 let plan
 if (values.all) {
   if (!PROJECTS.includes(values.all)) throw new Error(`--all expects one of: ${PROJECTS.join(', ')}`)
   const include = values.include ? new RegExp(values.include) : null
   const files = git('ls-files', `${values.all}/`).split('\n').filter((file) => file && (!include || include.test(file)))
   const changes = files.filter((file) => classify(file).kind === 'source').map((file) => ({ status: 'M', path: file }))
-  plan = buildPlan(changes, { exists: existsSync, maxTargets, mode: 'coverage' })
+  plan = buildPlan(changes, { exists: existsSync, maxTargets, mode: 'coverage', relatedTests })
 } else {
   if (!SHA.test(values.base ?? '') || !SHA.test(values.head ?? '')) throw new Error('--base and --head must be commit SHAs')
   // Three-dot diff: only what the PR introduces relative to the merge base.
   const range = `${values.base}...${values.head}`
   const changes = parseNameStatus(git('diff', '--name-status', '-M', range))
-  plan = buildPlan(changes, { exists: existsSync, maxTargets, mode: 'pr' })
+  plan = buildPlan(changes, { exists: existsSync, maxTargets, mode: 'pr', relatedTests })
   plan.base = values.base
   plan.head = values.head
-  const relevant = plan.targets.flatMap((t) => [t.path, ...(t.testFileExists ? [t.testFile] : [])])
+  const relevant = [...new Set(plan.targets.flatMap((t) => [t.path, ...t.relatedTests]))]
   let diff = relevant.length ? git('diff', '--no-color', '-U5', range, '--', ...relevant) : ''
   if (Buffer.byteLength(diff) > MAX_DIFF_BYTES) {
     diff = `${diff.slice(0, MAX_DIFF_BYTES)}\n\n[diff truncated at ${MAX_DIFF_BYTES} bytes - read the files directly]\n`

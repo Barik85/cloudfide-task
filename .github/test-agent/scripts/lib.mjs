@@ -51,6 +51,16 @@ export function testPathFor(file) {
   return `backend/tests/${path.posix.basename(file, '.ts')}.test.ts`
 }
 
+/**
+ * Test files that import a module, found by matching import specifiers that end with the
+ * module's name (`'./http'`, `'../src/core/config.ts'`). `tests` maps test path -> source text.
+ */
+export function findRelatedTests(file, tests) {
+  const name = path.posix.basename(file).replace(/\.tsx?$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const specifier = new RegExp(`from\\s+['"][^'"]*/${name}(?:\\.(?:js|ts|tsx))?['"]`)
+  return Object.entries(tests).filter(([, source]) => specifier.test(source)).map(([test]) => test).sort()
+}
+
 /** Parse `git diff --name-status -M` output. Renames are reported under their new path. */
 export function parseNameStatus(output) {
   return output
@@ -66,7 +76,7 @@ export function parseNameStatus(output) {
  * Build the agent's work plan from the changed files.
  * `exists(path)` tells whether a file exists at the PR head.
  */
-export function buildPlan(changes, { exists, maxTargets = 20, mode = 'pr' } = {}) {
+export function buildPlan(changes, { exists, maxTargets = 20, mode = 'pr', relatedTests = () => [] } = {}) {
   const files = changes.map((change) => {
     const info = classify(change.path)
     const testFile = testPathFor(change.path)
@@ -88,7 +98,7 @@ export function buildPlan(changes, { exists, maxTargets = 20, mode = 'pr' } = {}
     skipReason,
     projects: PROJECTS.filter((name) => projects.includes(name) || targets.some((t) => t.project === name)),
     targets: targets.map(({ path: file, status, project, testFile, testFileExists }) => ({
-      path: file, status, project, testFile, testFileExists,
+      path: file, status, project, testFile, testFileExists, relatedTests: relatedTests(file),
     })),
     truncated: candidates.length - targets.length,
     deletedSources,

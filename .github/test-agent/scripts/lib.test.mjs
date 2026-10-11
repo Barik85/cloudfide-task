@@ -161,3 +161,17 @@ describe('validateReport', async () => {
     assert.ok(errors.includes('decisions[0].action is invalid'))
   })
 })
+
+describe('findRelatedTests', async () => {
+  const { findRelatedTests } = await import('./lib.mjs')
+  it('finds tests importing a module by specifier, with or without extension', () => {
+    const tests = {
+      'frontend/src/features/todos/hooks/todoHooks.test.tsx': "import { useTodosBusy } from './useTodosBusy'",
+      'backend/tests/config.test.ts': "import { resolveDatabaseUrl } from '../src/core/config.ts';",
+      'frontend/src/other.test.ts': "import { useTodosBusyLater } from './useTodosBusyLater'",
+    }
+    assert.deepEqual(findRelatedTests('frontend/src/features/todos/hooks/useTodosBusy.ts', tests), ['frontend/src/features/todos/hooks/todoHooks.test.tsx'])
+    assert.deepEqual(findRelatedTests('backend/src/core/config.ts', tests), ['backend/tests/config.test.ts'])
+    assert.deepEqual(findRelatedTests('backend/src/core/database.ts', tests), [])
+  })
+})
