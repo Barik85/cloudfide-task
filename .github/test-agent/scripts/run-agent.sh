@@ -15,6 +15,11 @@ out="$root/.test-agent"
 cd "$root"
 [[ -f "$out/plan.json" ]] || { echo "Missing $out/plan.json - run analyze-changes.mjs first." >&2; exit 2; }
 
+# GitHub passes unset secrets as empty strings; drop them so the configured method wins
+# (subscription OAuth token or API key).
+[[ -n "${ANTHROPIC_API_KEY:-}" ]] || unset ANTHROPIC_API_KEY
+[[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] || unset CLAUDE_CODE_OAUTH_TOKEN
+
 # The agent's Bash tool may re-source a shell profile; keep the Node.js we were started with.
 export TEST_AGENT_PATH="$PATH"
 
