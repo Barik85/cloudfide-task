@@ -27,7 +27,9 @@ pull_request ──► analyze ─────────► generate ───
                  plan.json          agent.patch             policy check         commit tests to the
                  pr.diff            agent-report.json       git apply            PR branch + sticky
                                     transcript.jsonl        tsc + vitest         PR comment + job
-                                                            + coverage           summary
+                                                            + coverage           summary +
+                                                                                 dispatch CI for
+                                                                                 the new commit
 ```
 
 | Piece | Where | Role |
@@ -97,7 +99,7 @@ in a local Claude Code session) and by any other agent.
 | Agent claims results it didn't observe | Report is advisory; the comment's verification table comes from the independent run. In a dry run the agent correctly reported "tests never ran" when the wrapper was broken. |
 | Runaway cost / hangs | `--max-budget-usd`, job timeouts, per-command timeout, max 20 targets per run, 200 KB diff cap, `concurrency` cancels superseded runs. |
 | Race with new pushes | Concurrency group per PR + publish refuses to commit if the branch tip moved. |
-| Workflow loops | Commits made with `GITHUB_TOKEN` do not trigger new workflow runs. |
+| Workflow loops | Commits made with `GITHUB_TOKEN` do not trigger new workflow runs. Publish explicitly dispatches only `ci.yml` (no agent run) for the agent's commit, so the PR shows real CI checks for its new head. |
 | Supply chain | Actions pinned to commit SHAs; Claude Code version pinned; `npm ci` from lockfiles. |
 | Markdown/mention injection in the comment | All PR/LLM text passes through `sanitize()` (HTML escaped, `@` neutralised, length-capped). |
 | Least privilege | `permissions: {}` at workflow level; each job declares only what it needs. |
@@ -225,8 +227,9 @@ depend on the date or time zone they run in.
   and focused `--include` passes).
 - Tests written by the agent may assert current behaviour that is actually a bug; the rules tell it
   to report suspected bugs instead, but this relies on judgement.
-- A commit pushed with `GITHUB_TOKEN` does not re-trigger `ci.yml`; verification of that exact
-  state happens inside the agent workflow (a GitHub App token would re-trigger CI).
+- A commit pushed with `GITHUB_TOKEN` does not trigger `pull_request` workflows, so publish
+  starts `ci.yml` via `workflow_dispatch` (needs `actions: write`). That run checks the branch
+  head, not GitHub's PR merge commit.
 - If the PR itself breaks typecheck/tests in a way the agent cannot fix within test files, nothing
   is committed (by design) — the comment shows the failures instead.
 - Fork PRs are skipped. The repository's pre-existing `prettier --check` failures (`index.html`, …)
@@ -235,7 +238,7 @@ depend on the date or time zone they run in.
 
 ## 8. Production roadmap
 
-- **GitHub App** identity for commits (re-triggers CI, clearer audit trail) and a protected
+- **GitHub App** identity for commits (normal `pull_request` CI on the merge commit, clearer audit trail) and a protected
   **Environment** with required reviewers for the secret.
 - Support fork PRs safely via `workflow_run` / label-gated `pull_request_target` that treats PR
   code strictly as data, with the agent in an ephemeral sandbox (container/microVM) with an
