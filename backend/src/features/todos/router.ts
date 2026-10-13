@@ -11,6 +11,8 @@ export function createTodosRouter(repository: TodoStore) {
     next();
   });
   router.get('/', async (req, res) => res.json(await repository.list()));
+  // Registered before '/:id' so that 'stats' is not parsed as a task ID.
+  router.get('/stats', async (req, res) => res.json(await repository.stats()));
   router.post('/', async (req, res) => {
     const result = createSchema.safeParse(req.body);
     if (!result.success) return res.status(422).json({ detail: result.error.issues });
